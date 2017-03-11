@@ -1,4 +1,4 @@
-setwd("/Users/desert/hs616")
+setwd("...")
 
 #install.packages("corrgram")
 library(corrgram)
