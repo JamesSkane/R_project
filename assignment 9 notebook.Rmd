@@ -1,0 +1,251 @@
+---
+title: "James Skane - Assignment 9"
+output:
+  html_notebook: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r}
+library('ggplot2')
+library('dplyr')
+library('plyr')
+library('corrgram')
+#install.packages("irr")
+library('irr')
+#install.packages("survminer")
+library("survival")
+library("survminer")
+setwd('/Users/desert/hs616')
+```
+####*1. Read in the data for the 664 matched pairs: bioprosthetics_match.csv contains patients with bioprosthetic valves and mechprosthetics_match.csv contains the patients with mechanical valves. These patients are matched with the patient in in the corresponding row of the other data set (ie: row 1 of bioprosthetics_match matches row 1 of mechprosthetics_match, etc.)* 
+```{r}
+new_mechprosthetics <- read.table(file="mechprosthetics_death_match.csv", sep =",", header = TRUE)
+new_bioprosthetics <- read.table(file="bioprosthetics_death_match.csv", sep =",", header = TRUE)
+df<-bind_rows(new_bioprosthetics,new_mechprosthetics)
+```
+
+####*2. Create side-by-side plots of the distributions of age, sex, race, cancer status and emergency room admission status jn the 2 datasets. In your report comment on the quality of the matching.*
+```{r}
+plot_compare <- function(dat1, dat2){
+  par(mfrow=c(1, 2))
+  d1 <- density(dat1)
+  d2 <- density(dat2)
+  plot(d1, type="n")
+  polygon(d1, col="red", border="gray")
+  plot(d2, type="n")
+  polygon(d2, col="blue", border="gray")
+  
+}
+
+plot_compare(new_bioprosthetics$age, new_mechprosthetics$age)
+new_bioprosthetics$sex <- ifelse(new_bioprosthetics$sex=='male', 1, 0)
+new_mechprosthetics$sex <- ifelse(new_mechprosthetics$sex=='male', 1, 0)
+plot_compare(new_bioprosthetics$sex, new_mechprosthetics$sex)
+plot_compare(new_bioprosthetics$cancer, new_mechprosthetics$cancer)
+plot_compare(new_bioprosthetics$emergent_admission,
+             new_mechprosthetics$emergent_admission)
+```
+
+The above shows all were matched well except for emergent admission. Mechanical prosthetics seem to have less emergent admissions.
+
+
+####*3. Perform a shapiro-wilks test for normality of the age variable in each set.*
+Below suggests both samples came from a normal distribution, given p-values are less than 0.05
+```{r}
+shapiro.test(new_bioprosthetics$age)
+shapiro.test(new_mechprosthetics$age)
+```
+
+####*4. Perform t-tests, Pearson's Chi-squared tests and McNemar's test where appropriate to test if the paired sets are significantly different that were used for matching.Matching was done based on: age, sex, race, cancer status and emergency room admission status.*
+This is matched data which would violate the assumptions of Chi2. Considering this we will use McNemar's test, Fisher's Exact Test, and Bhapkar coefficient to compare the non-quantitative, nominal, feature spaces with one another. Conversely, paired t-tests will be used for the quantitative features. Will forego comparing non-matched variables. 
+```{r}
+compare_nominal_feats <- function(dat1, dat2){
+  mat <-table(dat1, dat2)
+  mcnemar.test(mat)
+}
+
+# Age
+t.test(new_bioprosthetics$age, new_mechprosthetics$age, "two.sided")
+
+# Sex 
+count(new_bioprosthetics, "sex") # same proportions for each gender
+count(new_mechprosthetics, "sex") # same proportions for each gender
+tab.2by2 <- xtabs(~ sex +group, df)
+tab.2by2
+fisher.test(tab.2by2) 
+
+# Race
+bhapkar(race_df) 
+
+# Cancer
+count(new_bioprosthetics, "cancer") 
+count(new_mechprosthetics, "cancer") 
+compare_nominal_feats(new_bioprosthetics$cancer,
+                      new_mechprosthetics$cancer)
+
+# Emergent admissions
+count(new_bioprosthetics, "emergent_admission") 
+count(new_mechprosthetics, "emergent_admission") 
+compare_nominal_feats(new_bioprosthetics$emergent_admission,
+                      new_mechprosthetics$emergent_admission)
+
+
+
+```
+Age: matched well, p-value = 0.9987.  Suggests the true difference in the means is equal to 0, given p-value = .9987
+
+Sex: matched well, p-value: 1. A p-value of 1 means we cannot confidently claim any difference in gender for the two data sets.
+
+Race: matched well, p-value 0.00522
+
+Cancer: matched well, p-value = 0.4292 NOT independent. The null hypothesis here is NON-independence. A p-value higher than 0.05 confirms that we fail to reject the null hypothesis that cancer in pts with mechanical and biological mitral valve replacements are not independent from one another. 
+
+Emergent admissions: NOT matched well, p-value = 6.037e-07, independent.
+Null hypothesis here is NON-independence. A p-val less than 0.05 confirms that we should reject the null hypothesis and state Emergent admissions in pts with mechanical and biological mitral valve replacements are independent from one another.
+
+####*5. Perform correlation tests of the variables of each set and display this information in a plot*
+
+```{r}
+corrgram(new_bioprosthetics, lower.panel=panel.conf,
+         upper.panel=panel.pts, diag.panel=panel.density)
+corrgram(new_mechprosthetics, lower.panel=panel.conf,
+         upper.panel=panel.pts, diag.panel=panel.density)
+```
+
+####*6. For each set, plot: 
+####-Diabetes as a function of age: grouped by death cases
+####-Age as a function of sex, split by race (hint: use facet-wrap) 
+####-Congestive heart failure as a function of age, split by death*
+
+```{r}
+ggplot(new_bioprosthetics, aes(age,diabetes_mellitus)) +
+  geom_point(aes(color=death)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~ death)
+ggplot(new_mechprosthetics, aes(age,diabetes_mellitus)) +
+  geom_point(aes(color=death)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~ death)
+
+
+ggplot(new_bioprosthetics, aes(sex, age)) +
+  geom_point(aes(color=death)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~ race)
+ggplot(new_mechprosthetics, aes(sex, age)) +
+  geom_point(aes(color=death)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~ race)
+
+
+ggplot(new_bioprosthetics, aes(age,congestive_heart_failure)) +
+  geom_point(aes(color=death)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~ death)
+ggplot(new_mechprosthetics, aes(age,congestive_heart_failure)) +
+  geom_point(aes(color=death)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~ death)
+```
+####7. Read in data that included the right-censored survival time:
+```{r}
+final_mech_prosthetics <- read.table(file="mechprosthetics_final_match.csv", 
+                                     sep =",", header = TRUE)
+final_bio_prosthetics <- read.table(file="bioprosthetics_final_match.csv",
+                                   sep =",", header = TRUE)
+
+final_data <-bind_rows(final_bio_prosthetics,final_mech_prosthetics)
+
+```
+```{r}
+valv_surv <- Surv(final_data$time, final_data$death)
+head(valv_surv)
+summary(valv_surv)
+head(final_data[,c('time','death')])
+```
+
+####*8. Why are some of the entries marked with a plus sign (“+”)?*
+The + indicates that death has not occured, and therefore signifies censored values.
+
+
+####*9.Execute the following code to estimate the probability of survival after surgery based only on the group the subject belongs to:*
+```{r}
+survfit_group <- survfit(valv_surv~group, data= final_data )
+summary(survfit_group)
+plot(survfit_group, col=c(1,2))
+plot(survfit_group, conf.int = T, col=c(1,2))
+
+#Extra plot for clarity
+ggsurvplot(survfit_group,
+           pval = TRUE, conf.int = TRUE,
+           ggtheme = theme_bw())
+```
+####*Comment on the summary.*
+
+For each group we recieve a seperate summary table.  In each of the group table is sorted by the length of survival (time) following valve replacement. Althogh it is not specified, this is assumed to be the number of years following valve replacement surgery. The time column shows every time value that a death occurred in that group. For each time value the summary displays:
+- the total number of individuals in the sample at this time,
+- the number of deaths taking place at this time.
+- survival probability at this time and group
+- the standard error
+- and the upper and lower confidence interval values (CI 95%)
+
+####*From the 2nd plot (the one with confidence intervals) comment on whether there is a significant difference in survival between those patients who had amechanical valve and those who had a bioprosthetic valve.*
+Although the confidence intervals overlap prior to 6 and after 11, there is a statistically significant difference in survival between those patients who had a mechanical valve and those who had a bioprosthetic valve replacement. This is demonstrated by the p-value of 0.0046.
+
+
+
+####*10. Execute the following code to estimate the probability of survival after surgery based only on the year the surgery was performed and comment on the summary:*
+```{r}
+
+survfit_year <- survfit(valv_surv~year,data=final_data)
+summary(survfit_year)
+plot(survfit_year, col=c(1,2))
+ggsurvplot(survfit_year,
+           pval = TRUE, conf.int = TRUE,
+           risk.table = TRUE, 
+           risk.table.col = "strata",
+           risk.table.fontsize = 5,
+           risk.table.height = .4,
+           linetype = "strata", 
+           surv.median.line = "hv",
+           ggtheme = theme_bw())
+```
+
+This demonstrates that the survival probability following valve replacements has remained consistent since 1997. The p-value of 0.38 shows there has been no statistically significant improvement in survival probability. 
+
+
+####*11. Enter the following code to use the cox regression model to investigate the effect of age on survival:*
+```{r}
+fit_age <- coxph(valv_surv~age, data=final_data)
+summary(fit_age)
+```
+
+####*Comment on goodness-of-fit and fill in the following statement:*
+The Rsquare of 0.154, suggest the model does not explain the variance very well,however, age is proven to be statistically significant predictior of the hazard ratio given it's pvalue of <2e-16 *** From this we can interpret that ...
+*Each 1 year increase in age is associated with an increase in hazard ratio by a factor of 0.14825.*
+
+####*12. Enter the following code to use the cox regression model to investigate the effect of significant variables on survival:*
+```{r}
+fit2 <- coxph(valv_surv~ age+congestive_heart_failure+cancer+group, data=final_data)
+summary(fit2)
+```
+
+####*Comment on goodness-of-fit...*
+The Rsquare of 0.206, suggests this model fits our data better than the prior model, but still does not explain a great deal of the existing variance.That said, all predictor variables included are statistically significant. 
+####*and fill in the following statements:....*
+- Each 1 year increase in age is associated with an increase in hazard ratio by a factor of 2.4191.
+- Having cancer is associated with an increase in hazard ratio of 1.6718 compared with not having cancer
+- Having a mechanical valve is associated with an increase in hazard ratio of 0.8289 compared with having a bioprosthetic valve
+
+####*13. Validate that your models met the required assumptions (a p-value less than 0.05 indicates a violation of the proportionality assumption):*
+
+```{r}
+validate1 = cox.zph(fit_age) #meets required assumptions
+validate1
+validate2 <- cox.zph(fit2) #meets required assumptions
+validate2 
+```
+The p-values here show assumptions are met, and there is no evidence that suggests we should reject the hypothesis that the residuals are uncorrelated with time.
+
